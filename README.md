@@ -63,43 +63,43 @@ UltraWeb is a revolutionary web application platform that replaces traditional b
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                              SERVER SIDE                                     │
-│                                                                              │
+│                              SERVER SIDE                                    │
+│                                                                             │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────────────┐  │
 │  │   Source Files  │  │   Compilers     │  │   Binary Outputs            │  │
 │  │                 │  │                 │  │                             │  │
 │  │  ┌───────────┐  │  │  ┌───────────┐  │  │  ┌───────────────────────┐  │  │
-│  │  │ .js files │──┼──┼─▶│ Hermes    │──┼──┼─▶│ .hbc (bytecode)       │  │  │
+│  │  │ .js files │──┼──┼─▶│ Hermes   │──┼──┼─▶│ .hbc (bytecode)       │  │  │
 │  │  └───────────┘  │  │  └───────────┘  │  │  └───────────────────────┘  │  │
 │  │                 │  │                 │  │                             │  │
 │  │  ┌───────────┐  │  │  ┌───────────┐  │  │  ┌───────────────────────┐  │  │
-│  │  │ .css files│──┼──┼─▶│ UCSCompile│──┼──┼─▶│ .ucs (binary styles)  │  │  │
+│  │  │ .css files│──┼──┼─▶│ UCSCompile│──┼──┼─▶│ .ucs (binary styles) │  │  │
 │  │  └───────────┘  │  │  └───────────┘  │  │  └───────────────────────┘  │  │
 │  │                 │  │                 │  │                             │  │
 │  │  ┌───────────┐  │  │  ┌───────────┐  │  │  ┌───────────────────────┐  │  │
-│  │  │ .ucml     │──┼──┼─▶│ UCBCompile│──┼──┼─▶│ .ucb (binary UI)      │  │  │
-│  │  └───────────┘  │  │  └───────────┘  │  │  └───────────────────────────┘  │
+│  │  │ .ucml     │──┼──┼─▶│ UCBCompile│─┼──┼─▶│ .ucb (binary UI)      │  │  │
+│  │  └───────────┘  │  │  └───────────┘  │  │  └───────────────────────┘  │  │
 │  │                 │  │                 │  │                             │  │
 │  │  ┌───────────┐  │  │  ┌───────────┐  │  │  ┌───────────────────────┐  │  │
-│  │  │ assets    │──┼──┼─▶│ UCAPack   │──┼──┼─▶│ .uca (binary assets)  │  │  │
+│  │  │ assets    │──┼──┼─▶│ UCAPack  │──┼──┼─▶│ .uca (binary assets)  │  │  │
 │  │  └───────────┘  │  │  └───────────┘  │  │  └───────────────────────┘  │  │
 │  └─────────────────┘  └─────────────────┘  └─────────────────────────────┘  │
-│                                                      │                       │
+│                                                      │                      │
 │                              ┌───────────────────────▼───────────────────┐  │
 │                              │         UltraWeb Bundler                  │  │
 │                              │         Creates .ucpkg bundle             │  │
 │                              │         Applies LZ4 compression           │  │
 │                              └───────────────────────┬───────────────────┘  │
-└──────────────────────────────────────────────────────┼───────────────────────┘
+└──────────────────────────────────────────────────────┼──────────────────────┘
                                                        │
                                           HTTP/2 or WebSocket
                                                        │
-┌──────────────────────────────────────────────────────┼───────────────────────┐
-│                              BROWSER SIDE            │                       │
-│                                                      ▼                       │
+┌──────────────────────────────────────────────────────┼──────────────────────┐
+│                              BROWSER SIDE            │                      │
+│                                                      ▼                      │
 │  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │                    UltraWeb Runtime (WASM)                             │  │
-│  │                                                                        │  │
+│  │                    UltraWeb Runtime (WASM)                            │  │
+│  │                                                                       │  │
 │  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────┐    │  │
 │  │  │ Package Loader  │  │ Hermes VM       │  │ Style Engine        │    │  │
 │  │  │ - Decompress    │  │ - Execute .hbc  │  │ - Apply .ucs        │    │  │
@@ -108,25 +108,25 @@ UltraWeb is a revolutionary web application platform that replaces traditional b
 │  │           │                    │                      │               │  │
 │  │           ▼                    ▼                      ▼               │  │
 │  │  ┌────────────────────────────────────────────────────────────────┐   │  │
-│  │  │                    UltraCanvas Renderer                         │   │  │
-│  │  │  - Canvas 2D API (primary)                                      │   │  │
-│  │  │  - WebGL (optional, for 3D)                                     │   │  │
-│  │  │  - Full UltraCanvas component library                           │   │  │
+│  │  │                    UltraCanvas Renderer                        │   │  │
+│  │  │  - Canvas 2D API (primary)                                     │   │  │
+│  │  │  - WebGL (optional, for 3D)                                    │   │  │
+│  │  │  - Full UltraCanvas component library                          │   │  │
 │  │  └────────────────────────────────────────────────────────────────┘   │  │
-│  │                                    │                                   │  │
+│  │                                    │                                  │  │
 │  │  ┌─────────────────────────────────▼──────────────────────────────┐   │  │
-│  │  │                    Event Handler                                │   │  │
-│  │  │  - Mouse / Touch / Keyboard                                     │   │  │
-│  │  │  - Maps to UltraCanvas events                                   │   │  │
-│  │  │  - Dispatches to Hermes callbacks                               │   │  │
+│  │  │                    Event Handler                               │   │  │
+│  │  │  - Mouse / Touch / Keyboard                                    │   │  │
+│  │  │  - Maps to UltraCanvas events                                  │   │  │
+│  │  │  - Dispatches to Hermes callbacks                              │   │  │
 │  │  └────────────────────────────────────────────────────────────────┘   │  │
 │  └───────────────────────────────────────────────────────────────────────┘  │
-│                                          │                                   │
-│                                          ▼                                   │
-│                                 ┌─────────────────┐                          │
-│                                 │  HTML5 Canvas   │ ◀── Single DOM element   │
-│                                 └─────────────────┘                          │
-└──────────────────────────────────────────────────────────────────────────────┘
+│                                          │                                  │
+│                                          ▼                                  │
+│                                 ┌─────────────────┐                         │
+│                                 │  HTML5 Canvas   │ ◀── Single DOM element │
+│                                 └─────────────────┘                         │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Data Flow
@@ -162,7 +162,7 @@ UltraWeb is a revolutionary web application platform that replaces traditional b
 
 ```
 ┌────────────────────────────────────────────────────┐
-│                    UCB FILE FORMAT                  │
+│                    UCB FILE FORMAT                 │
 ├────────────────────────────────────────────────────┤
 │ HEADER (16 bytes)                                  │
 │ ┌────────────┬──────────────────────────────────┐  │
@@ -195,29 +195,29 @@ UltraWeb is a revolutionary web application platform that replaces traditional b
 
 **Element Types:**
 
-| ID | Type | Maps To |
-|----|------|---------|
-| 0x0001 | Container | UltraCanvasContainer |
-| 0x0002 | FlexBox | UltraCanvasFlexLayout |
-| 0x0003 | Grid | UltraCanvasGridLayout |
+| ID     | Type       | Maps To                    |
+|--------|------------|----------------------------|
+| 0x0001 | Container  | UltraCanvasContainer       |
+| 0x0002 | FlexBox    | UltraCanvasFlexLayout      |
+| 0x0003 | Grid       | UltraCanvasGridLayout      |
 | 0x0004 | ScrollView | UltraCanvasScrollContainer |
-| 0x0010 | Text | UltraCanvasLabel |
-| 0x0011 | Button | UltraCanvasButton |
-| 0x0012 | Input | UltraCanvasTextInput |
-| 0x0013 | TextArea | UltraCanvasTextArea |
-| 0x0014 | Checkbox | UltraCanvasCheckbox |
-| 0x0015 | Radio | UltraCanvasRadioButton |
-| 0x0016 | Select | UltraCanvasDropdown |
-| 0x0017 | Slider | UltraCanvasSlider |
-| 0x0020 | Image | UltraCanvasImage |
-| 0x0021 | SVG | UltraCanvasSVG |
-| 0x0022 | Canvas | UltraCanvasDrawingSurface |
-| 0x0030 | List | UltraCanvasListView |
-| 0x0031 | Table | UltraCanvasTableView |
-| 0x0032 | Tree | UltraCanvasTreeView |
-| 0x0040 | Tabs | UltraCanvasTabbedContainer |
-| 0x0041 | Modal | UltraCanvasModal |
-| 0x0042 | Menu | UltraCanvasMenu |
+| 0x0010 | Text       | UltraCanvasLabel           |
+| 0x0011 | Button     | UltraCanvasButton          |
+| 0x0012 | Input      | UltraCanvasTextInput       |
+| 0x0013 | TextArea   | UltraCanvasTextArea        |
+| 0x0014 | Checkbox   | UltraCanvasCheckbox        |
+| 0x0015 | Radio      | UltraCanvasRadioButton     |
+| 0x0016 | Select     | UltraCanvasDropdown        |
+| 0x0017 | Slider     | UltraCanvasSlider          |
+| 0x0020 | Image      | UltraCanvasImage           |
+| 0x0021 | SVG        | UltraCanvasSVG             |
+| 0x0022 | Canvas     | UltraCanvasDrawingSurface  |
+| 0x0030 | List       | UltraCanvasListView        |
+| 0x0031 | Table      | UltraCanvasTableView       |
+| 0x0032 | Tree       | UltraCanvasTreeView        |
+| 0x0040 | Tabs       | UltraCanvasTabbedContainer |
+| 0x0041 | Modal      | UltraCanvasModal           |
+| 0x0042 | Menu       | UltraCanvasMenu            |
 
 ---
 
@@ -227,7 +227,7 @@ UltraWeb is a revolutionary web application platform that replaces traditional b
 
 ```
 ┌────────────────────────────────────────────────────┐
-│                    UCS FILE FORMAT                  │
+│                    UCS FILE FORMAT                 │
 ├────────────────────────────────────────────────────┤
 │ HEADER (20 bytes)                                  │
 │ ┌────────────┬──────────────────────────────────┐  │
@@ -264,36 +264,36 @@ UltraWeb is a revolutionary web application platform that replaces traditional b
 
 **Property Encoding:**
 
-| Property ID | Name | Value Type | Bytes |
-|-------------|------|------------|-------|
-| 0x01 | display | enum | 3 |
-| 0x02 | position | enum | 3 |
-| 0x03 | flex-direction | enum | 3 |
-| 0x04 | justify-content | enum | 3 |
-| 0x05 | align-items | enum | 3 |
-| 0x10 | width | length | 5 |
-| 0x11 | height | length | 5 |
-| 0x12 | padding | length×4 | 11 |
-| 0x13 | margin | length×4 | 11 |
-| 0x20 | font-family | string-ref | 4 |
-| 0x21 | font-size | length | 5 |
-| 0x22 | font-weight | uint16 | 4 |
-| 0x23 | color | rgba | 6 |
-| 0x30 | background | color/gradient | 6-20 |
-| 0x31 | border-radius | length×4 | 11 |
-| 0x32 | box-shadow | shadow | 14 |
-| 0x33 | opacity | float | 5 |
+| Property ID | Name            | Value Type     | Bytes |
+|-------------|-----------------|----------------|-------|
+| 0x01        | display         | enum           | 3     |
+| 0x02        | position        | enum           | 3     |
+| 0x03        | flex-direction  | enum           | 3     |
+| 0x04        | justify-content | enum           | 3     |
+| 0x05        | align-items     | enum           | 3     |
+| 0x10        | width           | length         | 5     |
+| 0x11        | height          | length         | 5     |
+| 0x12        | padding         | length×4       | 11    |
+| 0x13        | margin          | length×4       | 11    |
+| 0x20        | font-family     | string-ref     | 4     |
+| 0x21        | font-size       | length         | 5     |
+| 0x22        | font-weight     | uint16         | 4     |
+| 0x23        | color           | rgba           | 6     |
+| 0x30        | background      | color/gradient | 6-20  |
+| 0x31        | border-radius   | length×4       | 11    |
+| 0x32        | box-shadow      | shadow         | 14    |
+| 0x33        | opacity         | float          | 5     |
 
 **Value Type Encoding:**
 
-| Type ID | Type | Encoding |
-|---------|------|----------|
-| 0x00 | enum | uint8 value |
-| 0x01 | color | R, G, B, A (4 bytes) |
-| 0x02 | length | int16 value + uint8 unit |
-| 0x03 | string-ref | uint16 index |
-| 0x04 | float | float32 |
-| 0x05 | gradient | type + stops |
+| Type ID | Type       | Encoding                 |
+|---------|------------|--------------------------|
+| 0x00    | enum       | uint8 value              |
+| 0x01    | color      | R, G, B, A (4 bytes)     |
+| 0x02    | length     | int16 value + uint8 unit |
+| 0x03    | string-ref | uint16 index             |
+| 0x04    | float      | float32                  |
+| 0x05    | gradient   | type + stops             |
 
 ---
 
@@ -303,7 +303,7 @@ UltraWeb is a revolutionary web application platform that replaces traditional b
 
 ```
 ┌────────────────────────────────────────────────────┐
-│                    UCA FILE FORMAT                  │
+│                    UCA FILE FORMAT                 │
 ├────────────────────────────────────────────────────┤
 │ HEADER (16 bytes)                                  │
 │ - Magic: 0x55434131 ('UCA1')                       │
@@ -339,7 +339,7 @@ UltraWeb is a revolutionary web application platform that replaces traditional b
 
 ```
 ┌────────────────────────────────────────────────────┐
-│                   UCPKG FILE FORMAT                 │
+│                   UCPKG FILE FORMAT                │
 ├────────────────────────────────────────────────────┤
 │ HEADER (48 bytes)                                  │
 │ ┌────────────┬──────────────────────────────────┐  │
