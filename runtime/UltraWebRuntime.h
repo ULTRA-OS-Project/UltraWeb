@@ -263,6 +263,16 @@ public:
     // eventJSON is the event payload; returns true if a JS handler ran.
     bool FireDomEvent(uint16_t elementId, const std::string& eventType,
                       const std::string& eventJSON = "{}");
+
+    // ===== DELTA UPDATES (Phase 4) =====
+    // Applies a UCDELTA stream (see include/UltraWebDelta.h) to the loaded
+    // application. Refuses deltas whose baseCrc32 does not match the
+    // client's current state; on success the state CRC advances to the
+    // delta's targetCrc32 so subsequent deltas chain.
+    bool ApplyDelta(const std::vector<uint8_t>& delta, std::string& error);
+
+    // CRC32 of the currently loaded package content (0 = nothing loaded)
+    uint32_t GetLoadedCrc32() const { return loadedCrc32; }
     
     // Asset access
     const std::vector<uint8_t>& GetAssetSection() const { return assetSection; }
@@ -302,6 +312,7 @@ private:
     
     // State
     bool isLoaded;
+    uint32_t loadedCrc32 = 0;
     uint16_t focusedElementId;
     uint16_t hoveredElementId;
     uint16_t pressedElementId;

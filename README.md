@@ -2,7 +2,7 @@
 
 ## Document Information
 - **Project Name:** UltraWeb
-- **Version:** 1.3.0
+- **Version:** 1.4.0
 - **Created:** 2025-06-02
 - **Author:** UltraCanvas Framework Team
 - **Status:** Planning / Initial Development
@@ -867,6 +867,24 @@ UltraWeb/
 
 **Goal:** Complete server-side toolchain.
 
+**Status (v1.4.0):** Core layer implemented. `UltraWebServer` is a
+dependency-free HTTP/WebSocket server (built-in POSIX backend, thread per
+connection) with a backend-neutral API — a uWebSockets backend can be
+swapped in for high-concurrency production without touching callers; the
+protocol work lives in shared modules. `WebSocketHandler` implements the
+RFC 6455 handshake (self-contained SHA-1/Base64) and frame codec.
+**Delta updates** are real: the UCDELTA format
+(`include/UltraWebDelta.h`) carries element-level ops (text, value,
+classes, visibility) plus section replace as fallback; `DeltaGenerator`
+diffs two .ucpkg builds (a text change produces a ~36-byte delta vs a
+~234-byte package) and `UltraWebRuntime::ApplyDelta` applies them
+client-side with base/target CRC chaining. `DevServer` composes
+FileWatcher (portable mtime polling) + recompilation + delta broadcast
+over WebSocket for hot reload. CLI tools: `uwc` (UCML/CSS/JS → binary),
+`uwb` (bundle, `--compress`), `uws` (serve, `--dev` watch mode).
+Remaining from the plan: asset optimization pipeline (AssetOptimizer)
+and the UC.fetch/UC.websocket client APIs, which build on this server.
+
 | Week | Deliverables |
 |------|--------------|
 | 13 | Development server with hot reload |
@@ -1128,7 +1146,7 @@ To stay clear of cloaking penalties, generated pages MUST:
 |------------|---------|---------|
 | Hermes | JavaScript to bytecode compiler | MIT |
 | LZ4 (via VirtualFS, UltraCanvas module) | Fast compression | BSD |
-| uWebSockets | HTTP/WebSocket server | Apache 2.0 |
+| uWebSockets (optional) | High-concurrency HTTP/WebSocket backend; a dependency-free built-in POSIX backend is included | Apache 2.0 |
 | libwebp | WebP image encoding | BSD |
 | woff2 | Font compression | MIT |
 
@@ -1199,6 +1217,7 @@ To stay clear of cloaking penalties, generated pages MUST:
 | 1.1.0 | 2026-07-07 | Added *Crawler & Fallback Rendering* section (static HTML for crawlers, serving modes, content parity rules); resolved SEO open question; annotated accessibility open question |
 | 1.2.0 | 2026-07-07 | Implemented .ucpkg LZ4 compression via VirtualFS raw-buffer API; specified compressed payload semantics (LZ4 frame after header, uncompressed offsets/CRC); restructured sources into spec directory layout |
 | 1.3.0 | 2026-07-07 | Phase 3 core: JSEngine abstraction with Hermes (JSI/.hbc) and QuickJS (dev/CI) backends, UC JavaScript API (elements, classes, events, reactive state), StateManager, event dispatch to JS, code-section execution, server-side HermesCompiler (hermesc wrapper) |
+| 1.4.0 | 2026-07-07 | Phase 4 core: UCDELTA format + DeltaGenerator/ApplyDelta (element-level incremental updates with CRC chaining), RFC 6455 WebSocketHandler, built-in HTTP/WebSocket UltraWebServer, FileWatcher + DevServer hot reload, CLI tools uwc/uwb/uws |
 
 ---
 

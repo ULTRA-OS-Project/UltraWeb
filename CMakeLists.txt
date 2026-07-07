@@ -39,6 +39,7 @@ set(ULTRAWEB_SOURCES
     core/UltraWebUICompiler.cpp
     core/UltraWebBundler.cpp
     core/UltraWebCompression.cpp
+    core/UltraWebDelta.cpp
     runtime/UCBLoader.cpp
     runtime/UCSLoader.cpp
     runtime/UltraWebRuntime.cpp
@@ -51,6 +52,11 @@ set(ULTRAWEB_SOURCES
     runtime/QuickJSEngine.cpp
     runtime/HermesRuntime.cpp
     server/HermesCompiler.cpp
+    server/DeltaGenerator.cpp
+    server/WebSocketHandler.cpp
+    server/UltraWebServer.cpp
+    server/FileWatcher.cpp
+    server/DevServer.cpp
 )
 
 set(ULTRAWEB_HEADERS
@@ -61,6 +67,7 @@ set(ULTRAWEB_HEADERS
     include/UltraWebUICompiler.h
     include/UltraWebBundler.h
     include/UltraWebCompression.h
+    include/UltraWebDelta.h
     runtime/UCBLoader.h
     runtime/UCSLoader.h
     runtime/UltraWebRuntime.h
@@ -74,10 +81,19 @@ set(ULTRAWEB_HEADERS
     runtime/QuickJSEngine.h
     runtime/HermesRuntime.h
     server/HermesCompiler.h
+    server/DeltaGenerator.h
+    server/WebSocketHandler.h
+    server/UltraWebServer.h
+    server/FileWatcher.h
+    server/DevServer.h
 )
 
 add_library(UltraWeb STATIC ${ULTRAWEB_SOURCES} ${ULTRAWEB_HEADERS})
 target_include_directories(UltraWeb PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+# Server threading (built-in POSIX backend)
+find_package(Threads REQUIRED)
+target_link_libraries(UltraWeb PUBLIC Threads::Threads)
 
 # ============================================================================
 # JavaScript Engine Backends
@@ -155,6 +171,24 @@ target_link_libraries(EventSystemTests PRIVATE UltraWeb)
 add_executable(JSRuntimeTests tests/JSRuntimeTests.cpp)
 target_link_libraries(JSRuntimeTests PRIVATE UltraWeb)
 
+add_executable(ServerTests tests/ServerTests.cpp)
+target_link_libraries(ServerTests PRIVATE UltraWeb)
+
+# ============================================================================
+# CLI Tools
+# ============================================================================
+
+add_executable(uwc tools/uwc.cpp)
+target_link_libraries(uwc PRIVATE UltraWeb)
+
+add_executable(uwb tools/uwb.cpp)
+target_link_libraries(uwb PRIVATE UltraWeb)
+
+add_executable(uws tools/uws.cpp)
+target_link_libraries(uws PRIVATE UltraWeb)
+
+install(TARGETS uwc uwb uws RUNTIME DESTINATION bin)
+
 # Enable testing
 enable_testing()
 add_test(NAME CSSCompilerTests COMMAND CSSCompilerTests)
@@ -164,6 +198,7 @@ add_test(NAME RuntimeTests COMMAND RuntimeTests)
 add_test(NAME ElementFactoryTests COMMAND ElementFactoryTests)
 add_test(NAME EventSystemTests COMMAND EventSystemTests)
 add_test(NAME JSRuntimeTests COMMAND JSRuntimeTests)
+add_test(NAME ServerTests COMMAND ServerTests)
 
 # ============================================================================
 # Install Rules
