@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "../include/UltraWebBundler.h"
+#include "../include/UltraWebCompression.h"
 #include <iostream>
 #include <cassert>
 #include <iomanip>
@@ -462,6 +463,104 @@ bool TestBundler_CompleteApplication() {
 }
 
 // ============================================================================
+// COMPRESSION TESTS
+// ============================================================================
+
+bool TestBundler_CompressedRoundTrip() {
+    PackageBundler bundler;
+
+    BundleConfig config;
+    config.enableCompression = true;
+    bundler.SetConfig(config);
+
+    // Repetitive style section compresses well
+    std::string css;
+    for (int i = 0; i < 200; i++) {
+        css += ".row-" + std::to_string(i % 20) +
+               " { display: flex; padding: 8px; background-color: #3399FF; }\n";
+    }
+    bundler.SetStyleFromSource(css);
+
+    std::vector<uint8_t> code(4096, 0x42);
+    bundler.SetCodeSection(code);
+
+    BundleResult result = bundler.Bundle();
+    if (!result.success) return false;
+
+    PackageReader reader;
+    if (!reader.Open(result.data)) return false;
+    if (!reader.VerifyCRC()) return false;
+
+    PackageInfo info = reader.GetInfo();
+    bool compressedFlag =
+        HasFlag(static_cast<UCPKGFlags>(info.flags), UCPKGFlags::Compressed);
+
+    if (Compression::IsAvailable()) {
+        if (!compressedFlag) {
+            std::cout << "  Compressed flag not set" << std::endl;
+            return false;
+        }
+        if (result.totalSize >= result.uncompressedSize) {
+            std::cout << "  Package not smaller: " << result.totalSize
+                      << " vs " << result.uncompressedSize << std::endl;
+            return false;
+        }
+        std::cout << "  Compressed: " << result.uncompressedSize << " -> "
+                  << result.totalSize << " bytes (ratio "
+                  << std::fixed << std::setprecision(2)
+                  << result.compressionRatio << ")" << std::endl;
+    } else {
+        // No backend in this build: must fall back to uncompressed with a warning
+        if (compressedFlag) {
+            std::cout << "  Compressed flag set without backend" << std::endl;
+            return false;
+        }
+        if (result.warnings.empty()) {
+            std::cout << "  Expected fallback warning" << std::endl;
+            return false;
+        }
+        std::cout << "  No compression backend; verified uncompressed fallback" << std::endl;
+    }
+
+    // Sections must round-trip identically either way
+    if (reader.ExtractCodeSection() != code) {
+        std::cout << "  Code section mismatch after round-trip" << std::endl;
+        return false;
+    }
+    return true;
+}
+
+bool TestBundler_IncompressibleFallsBack() {
+    PackageBundler bundler;
+
+    BundleConfig config;
+    config.enableCompression = true;
+    bundler.SetConfig(config);
+
+    // Pseudo-random bytes do not compress; bundler must fall back to storing
+    std::vector<uint8_t> noise(2048);
+    uint32_t state = 0xC0FFEE42;
+    for (auto& b : noise) {
+        state = state * 1664525u + 1013904223u;
+        b = static_cast<uint8_t>(state >> 24);
+    }
+    bundler.SetCodeSection(noise);
+
+    BundleResult result = bundler.Bundle();
+    if (!result.success) return false;
+
+    PackageReader reader;
+    if (!reader.Open(result.data)) return false;
+    if (!reader.VerifyCRC()) return false;
+
+    if (reader.ExtractCodeSection() != noise) {
+        std::cout << "  Code section mismatch" << std::endl;
+        return false;
+    }
+    return true;
+}
+
+// ============================================================================
 // MAIN TEST RUNNER
 // ============================================================================
 
@@ -533,7 +632,17 @@ int main() {
     
     if (TestBundler_CompleteApplication()) { passed++; PrintTestResult("Complete Application", true); }
     else { failed++; PrintTestResult("Complete Application", false); }
-    
+
+    // Compression Tests
+    std::cout << "\n[Compression Tests]\n";
+    std::cout << "  Backend available: " << (Compression::IsAvailable() ? "yes" : "no") << "\n";
+
+    if (TestBundler_CompressedRoundTrip()) { passed++; PrintTestResult("Compressed Round Trip", true); }
+    else { failed++; PrintTestResult("Compressed Round Trip", false); }
+
+    if (TestBundler_IncompressibleFallsBack()) { passed++; PrintTestResult("Incompressible Falls Back", true); }
+    else { failed++; PrintTestResult("Incompressible Falls Back", false); }
+
     // Summary
     std::cout << "\n";
     PrintSeparator();

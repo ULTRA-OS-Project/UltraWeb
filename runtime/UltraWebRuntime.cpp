@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraWebRuntime.h"
+#include "../include/UltraWebDelta.h"
 #include <cstring>
 #include <fstream>
 #include <sstream>
@@ -499,7 +500,8 @@ RuntimeLoadResult UltraWebRuntime::LoadPackage(const uint8_t* data, size_t size)
     }
     
     PackageInfo info = reader.GetInfo();
-    
+    loadedCrc32 = info.crc32;
+
     // Load UI section
     if (info.hasUI) {
         auto uiData = reader.ExtractUISection();
@@ -594,6 +596,157 @@ bool UltraWebRuntime::LoadCode(const std::vector<uint8_t>& hbcData) {
 
 bool UltraWebRuntime::LoadAssets(const std::vector<uint8_t>& ucaData) {
     assetSection = ucaData;
+    return true;
+}
+
+// ============================================================================
+// JAVASCRIPT (Phase 3)
+// ============================================================================
+
+bool UltraWebRuntime::AttachJSEngine(std::shared_ptr<JSEngine> engine,
+                                     std::string& error) {
+    if (!engine) {
+        error = "AttachJSEngine: null engine";
+        return false;
+    }
+    jsEngine = std::move(engine);
+    jsApi.reset(new UCApi(*this, *jsEngine));
+
+    jsEngine->SetNativeDispatcher(
+        [this](const std::string& fn, const std::string& argsJson) {
+            return jsApi ? jsApi->Dispatch(fn, argsJson) : std::string("null");
+        });
+
+    return jsEngine->EvaluateSource(UCApi::GetPreludeSource(),
+                                    "<uc-prelude>", error);
+}
+
+bool UltraWebRuntime::ExecuteCodeSection(std::string& error) {
+    if (!jsEngine) {
+        error = "no JS engine attached (call AttachJSEngine first)";
+        return false;
+    }
+    if (codeSection.empty()) {
+        error = "no code section loaded";
+        return false;
+    }
+
+    // Hermes bytecode magic (same constant as server/HermesCompiler.h;
+    // duplicated because the runtime must not depend on server code)
+    static const uint8_t kHbcMagic[8] = {0xC6, 0x1F, 0xBC, 0x03,
+                                         0xC1, 0x03, 0x19, 0x1F};
+    bool isBytecode = codeSection.size() >= sizeof(kHbcMagic) &&
+                      std::memcmp(codeSection.data(), kHbcMagic,
+                                  sizeof(kHbcMagic)) == 0;
+
+    if (isBytecode) {
+        if (!jsEngine->SupportsBytecode()) {
+            error = "code section is Hermes bytecode but the attached " +
+                    jsEngine->GetName() +
+                    " engine executes source only (build with "
+                    "ULTRAWEB_USE_HERMES for bytecode execution)";
+            return false;
+        }
+        return jsEngine->EvaluateBytecode(codeSection, error);
+    }
+
+    // Development mode: plain UTF-8 JavaScript source in the code section
+    std::string source(codeSection.begin(), codeSection.end());
+    return jsEngine->EvaluateSource(source, "<code-section>", error);
+}
+
+bool UltraWebRuntime::FireDomEvent(uint16_t elementId,
+                                   const std::string& eventType,
+                                   const std::string& eventJSON) {
+    return jsApi ? jsApi->FireEvent(elementId, eventType, eventJSON) : false;
+}
+
+// ============================================================================
+// DELTA UPDATES (Phase 4)
+// ============================================================================
+
+bool UltraWebRuntime::ApplyDelta(const std::vector<uint8_t>& delta,
+                                 std::string& error) {
+    if (!isLoaded) {
+        error = "no package loaded";
+        return false;
+    }
+
+    DeltaParseResult parsed = ParseDelta(delta);
+    if (!parsed.success) {
+        error = parsed.error;
+        return false;
+    }
+    if (parsed.baseCrc32 != loadedCrc32) {
+        error = "delta base mismatch: client state CRC does not match the "
+                "package this delta was generated against";
+        return false;
+    }
+
+    bool stylesReplaced = false;
+    for (const DeltaOp& op : parsed.ops) {
+        switch (op.type) {
+            case DeltaOpType::SetText:
+                SetElementText(op.elementId, op.stringValue);
+                break;
+            case DeltaOpType::SetValue:
+                SetElementValue(op.elementId, op.stringValue);
+                break;
+            case DeltaOpType::AddClass:
+            case DeltaOpType::RemoveClass: {
+                RuntimeElement* el = GetElement(op.elementId);
+                if (!el) break;
+                auto it = std::find(el->classNames.begin(),
+                                    el->classNames.end(), op.stringValue);
+                if (op.type == DeltaOpType::AddClass) {
+                    if (it == el->classNames.end()) {
+                        el->classNames.push_back(op.stringValue);
+                        RecomputeStyle(op.elementId);
+                    }
+                } else if (it != el->classNames.end()) {
+                    el->classNames.erase(it);
+                    RecomputeStyle(op.elementId);
+                }
+                break;
+            }
+            case DeltaOpType::SetVisible:
+                SetElementVisible(op.elementId, op.boolValue);
+                break;
+            case DeltaOpType::SetEnabled:
+                SetElementEnabled(op.elementId, op.boolValue);
+                break;
+            case DeltaOpType::ReplaceSection:
+                switch (op.sectionId) {
+                    case DeltaSectionId::UI:
+                        if (!LoadUI(op.sectionData)) {
+                            error = "delta UI section failed to load";
+                            return false;
+                        }
+                        stylesReplaced = true;  // new tree needs styling
+                        break;
+                    case DeltaSectionId::Style:
+                        if (!LoadStyles(op.sectionData)) {
+                            error = "delta style section failed to load";
+                            return false;
+                        }
+                        stylesReplaced = true;
+                        break;
+                    case DeltaSectionId::Code:
+                        LoadCode(op.sectionData);
+                        break;
+                    case DeltaSectionId::Assets:
+                        LoadAssets(op.sectionData);
+                        break;
+                }
+                break;
+        }
+    }
+
+    if (stylesReplaced) {
+        RecomputeStyles();
+    }
+
+    loadedCrc32 = parsed.targetCrc32;
     return true;
 }
 
@@ -998,6 +1151,7 @@ void UltraWebRuntime::Clear() {
     ucsLoader.Clear();
     styleEngine.Clear();
     isLoaded = false;
+    loadedCrc32 = 0;
     focusedElementId = 0;
     hoveredElementId = 0;
     pressedElementId = 0;

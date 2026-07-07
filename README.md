@@ -2,7 +2,7 @@
 
 ## Document Information
 - **Project Name:** UltraWeb
-- **Version:** 1.0.0
+- **Version:** 1.5.0
 - **Created:** 2025-06-02
 - **Author:** UltraCanvas Framework Team
 - **Status:** Planning / Initial Development
@@ -50,6 +50,8 @@ UltraWeb is a revolutionary web application platform that replaces traditional b
 ### Secondary Objectives
 
 - Progressive enhancement for legacy browser fallback
+- Crawler-optimized static HTML generation for SEO, AI crawlers, and link
+  previews (see *Crawler & Fallback Rendering*)
 - Offline-first capability with efficient caching
 - Real-time collaborative applications via WebSocket
 - Seamless integration with existing UltraCanvas components
@@ -367,7 +369,18 @@ UltraWeb is a revolutionary web application platform that replaces traditional b
 │ ASSET SECTION (.uca data)                          │
 └────────────────────────────────────────────────────┘
 
-Entire package is LZ4 compressed after header.
+Compression (UCPKGFlags::Compressed, bit 0x0001): the payload after the
+48-byte header is a single LZ4 frame (standard frame format, magic
+04 22 4D 18) containing the concatenated sections. Header offsets, sizes
+and CRC32 always describe the UNCOMPRESSED layout; readers decompress the
+payload first, then apply offsets. The bundler clears the flag and stores
+the payload raw when compression is unavailable or does not reduce size.
+Server-side compression is provided by the VirtualFS module
+(VirtualFS_CompressBuffer); the WASM runtime embeds a minimal LZ4 frame
+decoder. Implemented in core/UltraWebCompression.cpp (backend wrapper),
+core/UltraWebBundler.cpp (compress) and PackageReader (decompress);
+enable with -DULTRAWEB_USE_VIRTUALFS=ON
+-DULTRAWEB_VIRTUALFS_DIR=<UltraCanvas>/VirtualFS.
 ```
 
 ---
@@ -806,6 +819,23 @@ UltraWeb/
 
 **Goal:** JavaScript execution via Hermes bytecode.
 
+**Status (v1.3.0):** Core layer implemented. The runtime programs against a
+`JSEngine` abstraction (`runtime/JSEngine.h`) with two backends: **Hermes**
+(`HermesRuntime.*`, JSI-based, executes .hbc, build with
+`ULTRAWEB_USE_HERMES` + the Hermes SDK) and **QuickJS**
+(`QuickJSEngine.*`, source-only, `ULTRAWEB_USE_QUICKJS`) as the
+development/CI engine — the engine fallback anticipated in Risks. All
+JS↔native traffic crosses one host function
+(`__uc_native(name, argsJson)` → JSON), so backends stay tiny and
+behave identically. Implemented: UC element API (query, text/value,
+classes, visibility, bounds), event dispatch to JS (`element.on` /
+`FireDomEvent`), reactive state (`UC.useState` / `computed` / `effect`
+backed by the native `StateManager`), `console.log`, code-section
+execution (HBC via Hermes; plain-JS dev mode on any backend), and the
+server-side `HermesCompiler` (hermesc wrapper producing .hbc).
+`UC.fetch`/`UC.websocket` land with Phase 4, `UC.router`/`UC.storage`
+with Phase 5 (stubs throw descriptive errors).
+
 | Week | Deliverables |
 |------|--------------|
 | 9 | Hermes library integration |
@@ -836,6 +866,24 @@ UltraWeb/
 ### Phase 4: Server Framework (Weeks 13-16)
 
 **Goal:** Complete server-side toolchain.
+
+**Status (v1.4.0):** Core layer implemented. `UltraWebServer` is a
+dependency-free HTTP/WebSocket server (built-in POSIX backend, thread per
+connection) with a backend-neutral API — a uWebSockets backend can be
+swapped in for high-concurrency production without touching callers; the
+protocol work lives in shared modules. `WebSocketHandler` implements the
+RFC 6455 handshake (self-contained SHA-1/Base64) and frame codec.
+**Delta updates** are real: the UCDELTA format
+(`include/UltraWebDelta.h`) carries element-level ops (text, value,
+classes, visibility) plus section replace as fallback; `DeltaGenerator`
+diffs two .ucpkg builds (a text change produces a ~36-byte delta vs a
+~234-byte package) and `UltraWebRuntime::ApplyDelta` applies them
+client-side with base/target CRC chaining. `DevServer` composes
+FileWatcher (portable mtime polling) + recompilation + delta broadcast
+over WebSocket for hot reload. CLI tools: `uwc` (UCML/CSS/JS → binary),
+`uwb` (bundle, `--compress`), `uws` (serve, `--dev` watch mode).
+Remaining from the plan: asset optimization pipeline (AssetOptimizer)
+and the UC.fetch/UC.websocket client APIs, which build on this server.
 
 | Week | Deliverables |
 |------|--------------|
@@ -914,9 +962,9 @@ UltraWeb/
 │   │   ├── CSSParser.cpp
 │   │   ├── CSSCompiler.cpp
 │   │   ├── UICompiler.cpp
-│   │   └── AssetCompiler.cpp
-│   └── compression/
-│       └── LZ4Wrapper.cpp
+│   │   ├── AssetCompiler.cpp
+│   │   └── HTMLGenerator.cpp
+│   └── UltraWebCompression.cpp   # LZ4 backend wrapper (VirtualFS server-side)
 │
 ├── runtime/                      # Client runtime (WASM)
 │   ├── UltraWebRuntime.cpp
@@ -936,6 +984,7 @@ UltraWeb/
 │   ├── FileWatcher.cpp
 │   ├── HermesCompiler.cpp
 │   ├── DeltaGenerator.cpp
+│   ├── StaticPageHandler.cpp
 │   └── WebSocketHandler.cpp
 │
 ├── api/                          # JavaScript API
@@ -1001,6 +1050,108 @@ UltraWeb/
 
 ---
 
+## Crawler & Fallback Rendering
+
+**Status (v1.5.0):** Implemented. `HTMLGenerator`
+(`include/UltraWebHTMLGenerator.h`, `core/UltraWebHTMLGenerator.cpp`)
+renders semantic HTML from the same UCML/CSS sources or from a compiled
+.ucpkg (both paths produce identical output - parity by construction).
+Pages carry title/description/canonical, Open Graph + Twitter Card
+metadata, optional JSON-LD, inline CSS, and the Mode-A loader script
+(toggleable). Hidden elements are omitted; text and attributes are
+escaped; `href` properties render as anchors; heading-class text
+elements keep the document outline. Site artifacts via
+`GenerateSitemap` / `GenerateRobotsTxt`. Integrated: `uwc --emit-html`
+emits a page next to the .ucb, and `uws` / the dev server answer `/`
+with the generated HTML-first page (Mode A), regenerated on each
+rebuild.
+
+UltraWeb's binary formats (.ucb / .ucs / .ucpkg) are invisible to search
+engines, AI crawlers, and link-preview bots: these clients do not download
+the WASM runtime, most of them execute no JavaScript at all, and none of
+them can parse UltraWeb binaries. UltraWeb therefore generates
+crawler-optimized static HTML alongside the binary bundles. These files
+live on the server only — a normal browser session loads the WASM runtime
+and .ucpkg bundles and never requests them.
+
+### Design Principles
+
+1. **One source of truth.** The static HTML is emitted by an additional
+   compiler backend (`HTMLGenerator`) in the same build step that produces
+   .ucb/.ucs/.ucpkg — from the same UCML, CSS, and asset sources. Content
+   parity between the binary application and the HTML pages is therefore
+   guaranteed by construction, not by policy. This keeps the technique on
+   the right side of search engines' cloaking rules: serving different
+   *bytes* to crawlers is acceptable; serving different *content* is not.
+
+2. **Build-time generation, not runtime rendering.** Pages are generated
+   once at compile time (static site generation, comparable to a
+   Docusaurus build), never rendered on demand by a headless browser. This
+   avoids the operational problems — latency, drift, fragility — that led
+   search engines to deprecate classic "dynamic rendering" setups.
+
+3. **Plain, dependency-free HTML.** Generated pages carry no framework
+   runtime and require no JavaScript: semantic HTML plus minimal inline
+   CSS, in the spirit of a pre-rendered documentation page. Target < 15KB
+   per page before compression.
+
+### Generated Artifacts
+
+| Artifact | Purpose |
+|----------|---------|
+| `<route>.html` (one per public route) | Semantic HTML rendering of the route's content |
+| `sitemap.xml` | Route inventory for crawlers |
+| `robots.txt` | Crawler policy |
+| Open Graph / Twitter Card meta tags (per page) | Link previews in chat and social platforms |
+| JSON-LD structured data (optional, per route) | Rich search results |
+
+The `uwc` compiler gains an `--emit-html` option; the bundler places the
+generated pages next to the .ucpkg output for the server to pick up.
+
+### Serving Strategy
+
+Two modes, selectable per application in the server configuration:
+
+**Mode A — HTML-first (recommended default).** The server answers every
+initial page request with the generated HTML for that route. The page
+includes a small loader script; capable browsers download the WASM runtime
+and .ucpkg in the background, then swap the live application in place of
+the static content. Crawlers, no-JS clients, and legacy browsers simply
+keep the HTML. Benefits: no bot detection at all (nothing to misclassify,
+no user-agent lists to maintain), a meaningful first paint while the
+runtime loads, and the legacy-browser fallback (see Secondary Objectives)
+comes for free.
+
+**Mode B — bot-only.** The server returns HTML only to verified crawlers
+and the binary flow to everyone else. Verification requires user-agent
+matching **plus** reverse-DNS / published-IP-range validation — a
+user-agent string alone is trivially spoofed. Intended for applications
+where an HTML first response is undesirable (e.g. authenticated app shells
+with no public content).
+
+### Content Parity Rules
+
+To stay clear of cloaking penalties, generated pages MUST:
+
+- contain the same primary content (text, headings, images, links) a user
+  sees on that route in the running application;
+- never contain crawler-only keywords, links, or content;
+- return the same HTTP status codes as the binary route (a missing route
+  must 404 in both worlds);
+- carry a `rel="canonical"` link to the route's public URL.
+
+### Explicit Non-Goals
+
+- **Accessibility is not solved by this mechanism.** Screen readers run
+  inside real browsers as normal users and receive the canvas-rendered
+  application, never the crawler files. Screen reader support requires an
+  accessibility tree / ARIA projection in the host page (see Open
+  Questions).
+- Interactive or per-user views (dashboards behind login, personalized
+  data) are not generated — only publicly reachable content routes.
+
+---
+
 ## Dependencies
 
 ### Server-Side
@@ -1008,8 +1159,8 @@ UltraWeb/
 | Dependency | Purpose | License |
 |------------|---------|---------|
 | Hermes | JavaScript to bytecode compiler | MIT |
-| LZ4 | Fast compression | BSD |
-| uWebSockets | HTTP/WebSocket server | Apache 2.0 |
+| LZ4 (via VirtualFS, UltraCanvas module) | Fast compression | BSD |
+| uWebSockets (optional) | High-concurrency HTTP/WebSocket backend; a dependency-free built-in POSIX backend is included | Apache 2.0 |
 | libwebp | WebP image encoding | BSD |
 | woff2 | Font compression | MIT |
 
@@ -1019,6 +1170,7 @@ UltraWeb/
 |------------|---------|---------|
 | UltraCanvas | UI rendering | UltraCanvas License |
 | Hermes (embedded) | JS bytecode execution | MIT |
+| QuickJS (optional, dev/CI only) | JS source execution where the Hermes SDK is unavailable | MIT |
 | LZ4 (embedded) | Decompression | BSD |
 
 ---
@@ -1051,7 +1203,12 @@ UltraWeb/
 1. **UCML Syntax:** Should we define a custom UI markup language or use JSON/YAML?
 2. **Animation System:** CSS transitions only, or full animation API?
 3. **Accessibility:** How to provide screen reader support without DOM?
-4. **SEO:** Server-side rendering strategy for search engines?
+   Note: the crawler HTML described in *Crawler & Fallback Rendering* does
+   **not** solve this — screen readers run in real browsers and receive the
+   canvas-rendered application. Requires an accessibility tree / ARIA
+   projection in the host page.
+4. **SEO:** ~~Server-side rendering strategy for search engines?~~
+   **Resolved in v1.1.0** — see *Crawler & Fallback Rendering*.
 5. **Mobile:** Native app packaging (Capacitor/similar) or PWA only?
 
 ---
@@ -1071,6 +1228,11 @@ UltraWeb/
 | Version | Date | Changes |
 |---------|------|---------|
 | 1.0.0 | 2025-06-02 | Initial document creation |
+| 1.1.0 | 2026-07-07 | Added *Crawler & Fallback Rendering* section (static HTML for crawlers, serving modes, content parity rules); resolved SEO open question; annotated accessibility open question |
+| 1.2.0 | 2026-07-07 | Implemented .ucpkg LZ4 compression via VirtualFS raw-buffer API; specified compressed payload semantics (LZ4 frame after header, uncompressed offsets/CRC); restructured sources into spec directory layout |
+| 1.3.0 | 2026-07-07 | Phase 3 core: JSEngine abstraction with Hermes (JSI/.hbc) and QuickJS (dev/CI) backends, UC JavaScript API (elements, classes, events, reactive state), StateManager, event dispatch to JS, code-section execution, server-side HermesCompiler (hermesc wrapper) |
+| 1.4.0 | 2026-07-07 | Phase 4 core: UCDELTA format + DeltaGenerator/ApplyDelta (element-level incremental updates with CRC chaining), RFC 6455 WebSocketHandler, built-in HTTP/WebSocket UltraWebServer, FileWatcher + DevServer hot reload, CLI tools uwc/uwb/uws |
+| 1.5.0 | 2026-07-07 | Implemented HTMLGenerator crawler/fallback backend: semantic HTML from UCML/CSS or .ucpkg with OG/Twitter/JSON-LD metadata, sitemap/robots helpers, uwc --emit-html, Mode-A HTML-first index in uws and the dev server |
 
 ---
 
