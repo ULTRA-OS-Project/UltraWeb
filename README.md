@@ -2,7 +2,7 @@
 
 ## Document Information
 - **Project Name:** UltraWeb
-- **Version:** 1.0.0
+- **Version:** 1.1.0
 - **Created:** 2025-06-02
 - **Author:** UltraCanvas Framework Team
 - **Status:** Planning / Initial Development
@@ -50,6 +50,8 @@ UltraWeb is a revolutionary web application platform that replaces traditional b
 ### Secondary Objectives
 
 - Progressive enhancement for legacy browser fallback
+- Crawler-optimized static HTML generation for SEO, AI crawlers, and link
+  previews (see *Crawler & Fallback Rendering*)
 - Offline-first capability with efficient caching
 - Real-time collaborative applications via WebSocket
 - Seamless integration with existing UltraCanvas components
@@ -914,7 +916,8 @@ UltraWeb/
 │   │   ├── CSSParser.cpp
 │   │   ├── CSSCompiler.cpp
 │   │   ├── UICompiler.cpp
-│   │   └── AssetCompiler.cpp
+│   │   ├── AssetCompiler.cpp
+│   │   └── HTMLGenerator.cpp
 │   └── compression/
 │       └── LZ4Wrapper.cpp
 │
@@ -936,6 +939,7 @@ UltraWeb/
 │   ├── FileWatcher.cpp
 │   ├── HermesCompiler.cpp
 │   ├── DeltaGenerator.cpp
+│   ├── StaticPageHandler.cpp
 │   └── WebSocketHandler.cpp
 │
 ├── api/                          # JavaScript API
@@ -1001,6 +1005,94 @@ UltraWeb/
 
 ---
 
+## Crawler & Fallback Rendering
+
+UltraWeb's binary formats (.ucb / .ucs / .ucpkg) are invisible to search
+engines, AI crawlers, and link-preview bots: these clients do not download
+the WASM runtime, most of them execute no JavaScript at all, and none of
+them can parse UltraWeb binaries. UltraWeb therefore generates
+crawler-optimized static HTML alongside the binary bundles. These files
+live on the server only — a normal browser session loads the WASM runtime
+and .ucpkg bundles and never requests them.
+
+### Design Principles
+
+1. **One source of truth.** The static HTML is emitted by an additional
+   compiler backend (`HTMLGenerator`) in the same build step that produces
+   .ucb/.ucs/.ucpkg — from the same UCML, CSS, and asset sources. Content
+   parity between the binary application and the HTML pages is therefore
+   guaranteed by construction, not by policy. This keeps the technique on
+   the right side of search engines' cloaking rules: serving different
+   *bytes* to crawlers is acceptable; serving different *content* is not.
+
+2. **Build-time generation, not runtime rendering.** Pages are generated
+   once at compile time (static site generation, comparable to a
+   Docusaurus build), never rendered on demand by a headless browser. This
+   avoids the operational problems — latency, drift, fragility — that led
+   search engines to deprecate classic "dynamic rendering" setups.
+
+3. **Plain, dependency-free HTML.** Generated pages carry no framework
+   runtime and require no JavaScript: semantic HTML plus minimal inline
+   CSS, in the spirit of a pre-rendered documentation page. Target < 15KB
+   per page before compression.
+
+### Generated Artifacts
+
+| Artifact | Purpose |
+|----------|---------|
+| `<route>.html` (one per public route) | Semantic HTML rendering of the route's content |
+| `sitemap.xml` | Route inventory for crawlers |
+| `robots.txt` | Crawler policy |
+| Open Graph / Twitter Card meta tags (per page) | Link previews in chat and social platforms |
+| JSON-LD structured data (optional, per route) | Rich search results |
+
+The `uwc` compiler gains an `--emit-html` option; the bundler places the
+generated pages next to the .ucpkg output for the server to pick up.
+
+### Serving Strategy
+
+Two modes, selectable per application in the server configuration:
+
+**Mode A — HTML-first (recommended default).** The server answers every
+initial page request with the generated HTML for that route. The page
+includes a small loader script; capable browsers download the WASM runtime
+and .ucpkg in the background, then swap the live application in place of
+the static content. Crawlers, no-JS clients, and legacy browsers simply
+keep the HTML. Benefits: no bot detection at all (nothing to misclassify,
+no user-agent lists to maintain), a meaningful first paint while the
+runtime loads, and the legacy-browser fallback (see Secondary Objectives)
+comes for free.
+
+**Mode B — bot-only.** The server returns HTML only to verified crawlers
+and the binary flow to everyone else. Verification requires user-agent
+matching **plus** reverse-DNS / published-IP-range validation — a
+user-agent string alone is trivially spoofed. Intended for applications
+where an HTML first response is undesirable (e.g. authenticated app shells
+with no public content).
+
+### Content Parity Rules
+
+To stay clear of cloaking penalties, generated pages MUST:
+
+- contain the same primary content (text, headings, images, links) a user
+  sees on that route in the running application;
+- never contain crawler-only keywords, links, or content;
+- return the same HTTP status codes as the binary route (a missing route
+  must 404 in both worlds);
+- carry a `rel="canonical"` link to the route's public URL.
+
+### Explicit Non-Goals
+
+- **Accessibility is not solved by this mechanism.** Screen readers run
+  inside real browsers as normal users and receive the canvas-rendered
+  application, never the crawler files. Screen reader support requires an
+  accessibility tree / ARIA projection in the host page (see Open
+  Questions).
+- Interactive or per-user views (dashboards behind login, personalized
+  data) are not generated — only publicly reachable content routes.
+
+---
+
 ## Dependencies
 
 ### Server-Side
@@ -1051,7 +1143,12 @@ UltraWeb/
 1. **UCML Syntax:** Should we define a custom UI markup language or use JSON/YAML?
 2. **Animation System:** CSS transitions only, or full animation API?
 3. **Accessibility:** How to provide screen reader support without DOM?
-4. **SEO:** Server-side rendering strategy for search engines?
+   Note: the crawler HTML described in *Crawler & Fallback Rendering* does
+   **not** solve this — screen readers run in real browsers and receive the
+   canvas-rendered application. Requires an accessibility tree / ARIA
+   projection in the host page.
+4. **SEO:** ~~Server-side rendering strategy for search engines?~~
+   **Resolved in v1.1.0** — see *Crawler & Fallback Rendering*.
 5. **Mobile:** Native app packaging (Capacitor/similar) or PWA only?
 
 ---
@@ -1071,6 +1168,7 @@ UltraWeb/
 | Version | Date | Changes |
 |---------|------|---------|
 | 1.0.0 | 2025-06-02 | Initial document creation |
+| 1.1.0 | 2026-07-07 | Added *Crawler & Fallback Rendering* section (static HTML for crawlers, serving modes, content parity rules); resolved SEO open question; annotated accessibility open question |
 
 ---
 
