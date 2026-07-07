@@ -11,6 +11,7 @@
 //       Development mode: watches sourceDir (app.ucml/app.css/app.js),
 //       recompiles on change and pushes UCDELTA hot updates.
 
+#include "../include/UltraWebHTMLGenerator.h"
 #include "../server/DevServer.h"
 #include "../server/UltraWebServer.h"
 
@@ -113,9 +114,18 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "uws: %s\n", error.c_str());
         return 1;
     }
-    server.ServeStatic("/", "text/html",
-        std::string("<!doctype html><title>UltraWeb</title>"
-                    "<p>Package: <a href=\"/app.ucpkg\">/app.ucpkg</a></p>"));
+    // Mode-A HTML-first index: crawler/fallback HTML generated from the
+    // package itself (spec: Crawler & Fallback Rendering)
+    {
+        UltraWeb::Server::HTMLGenerator generator;
+        UltraWeb::Server::HTMLPageMeta meta;
+        meta.title = "UltraWeb Application";
+        auto page = generator.GenerateFromPackage(package, meta);
+        server.ServeStatic("/", "text/html",
+            page.success ? page.html
+                         : std::string("<!doctype html><title>UltraWeb</title>"
+                                       "<p><a href=\"/app.ucpkg\">package</a></p>"));
+    }
     server.ServePackage("/app.ucpkg", std::move(package));
 
     std::printf("uws: serving %s on http://%s:%u\n", target.c_str(),

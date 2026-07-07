@@ -40,6 +40,7 @@ set(ULTRAWEB_SOURCES
     core/UltraWebBundler.cpp
     core/UltraWebCompression.cpp
     core/UltraWebDelta.cpp
+    core/UltraWebHTMLGenerator.cpp
     runtime/UCBLoader.cpp
     runtime/UCSLoader.cpp
     runtime/UltraWebRuntime.cpp
@@ -68,6 +69,7 @@ set(ULTRAWEB_HEADERS
     include/UltraWebBundler.h
     include/UltraWebCompression.h
     include/UltraWebDelta.h
+    include/UltraWebHTMLGenerator.h
     runtime/UCBLoader.h
     runtime/UCSLoader.h
     runtime/UltraWebRuntime.h
@@ -174,6 +176,9 @@ target_link_libraries(JSRuntimeTests PRIVATE UltraWeb)
 add_executable(ServerTests tests/ServerTests.cpp)
 target_link_libraries(ServerTests PRIVATE UltraWeb)
 
+add_executable(HTMLGeneratorTests tests/HTMLGeneratorTests.cpp)
+target_link_libraries(HTMLGeneratorTests PRIVATE UltraWeb)
+
 # ============================================================================
 # CLI Tools
 # ============================================================================
@@ -199,6 +204,7 @@ add_test(NAME ElementFactoryTests COMMAND ElementFactoryTests)
 add_test(NAME EventSystemTests COMMAND EventSystemTests)
 add_test(NAME JSRuntimeTests COMMAND JSRuntimeTests)
 add_test(NAME ServerTests COMMAND ServerTests)
+add_test(NAME HTMLGeneratorTests COMMAND HTMLGeneratorTests)
 
 # ============================================================================
 # Install Rules

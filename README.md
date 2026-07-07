@@ -2,7 +2,7 @@
 
 ## Document Information
 - **Project Name:** UltraWeb
-- **Version:** 1.4.0
+- **Version:** 1.5.0
 - **Created:** 2025-06-02
 - **Author:** UltraCanvas Framework Team
 - **Status:** Planning / Initial Development
@@ -1052,6 +1052,20 @@ UltraWeb/
 
 ## Crawler & Fallback Rendering
 
+**Status (v1.5.0):** Implemented. `HTMLGenerator`
+(`include/UltraWebHTMLGenerator.h`, `core/UltraWebHTMLGenerator.cpp`)
+renders semantic HTML from the same UCML/CSS sources or from a compiled
+.ucpkg (both paths produce identical output - parity by construction).
+Pages carry title/description/canonical, Open Graph + Twitter Card
+metadata, optional JSON-LD, inline CSS, and the Mode-A loader script
+(toggleable). Hidden elements are omitted; text and attributes are
+escaped; `href` properties render as anchors; heading-class text
+elements keep the document outline. Site artifacts via
+`GenerateSitemap` / `GenerateRobotsTxt`. Integrated: `uwc --emit-html`
+emits a page next to the .ucb, and `uws` / the dev server answer `/`
+with the generated HTML-first page (Mode A), regenerated on each
+rebuild.
+
 UltraWeb's binary formats (.ucb / .ucs / .ucpkg) are invisible to search
 engines, AI crawlers, and link-preview bots: these clients do not download
 the WASM runtime, most of them execute no JavaScript at all, and none of
@@ -1218,6 +1232,7 @@ To stay clear of cloaking penalties, generated pages MUST:
 | 1.2.0 | 2026-07-07 | Implemented .ucpkg LZ4 compression via VirtualFS raw-buffer API; specified compressed payload semantics (LZ4 frame after header, uncompressed offsets/CRC); restructured sources into spec directory layout |
 | 1.3.0 | 2026-07-07 | Phase 3 core: JSEngine abstraction with Hermes (JSI/.hbc) and QuickJS (dev/CI) backends, UC JavaScript API (elements, classes, events, reactive state), StateManager, event dispatch to JS, code-section execution, server-side HermesCompiler (hermesc wrapper) |
 | 1.4.0 | 2026-07-07 | Phase 4 core: UCDELTA format + DeltaGenerator/ApplyDelta (element-level incremental updates with CRC chaining), RFC 6455 WebSocketHandler, built-in HTTP/WebSocket UltraWebServer, FileWatcher + DevServer hot reload, CLI tools uwc/uwb/uws |
+| 1.5.0 | 2026-07-07 | Implemented HTMLGenerator crawler/fallback backend: semantic HTML from UCML/CSS or .ucpkg with OG/Twitter/JSON-LD metadata, sitemap/robots helpers, uwc --emit-html, Mode-A HTML-first index in uws and the dev server |
 
 ---
 

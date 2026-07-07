@@ -73,6 +73,8 @@ private:
 
     // Compiles sources into a package; empty vector + error on failure
     std::vector<uint8_t> BuildPackage(std::string& error);
+    // Mode-A HTML-first index page generated from the package + CSS source
+    std::string BuildIndexPage(const std::vector<uint8_t>& package);
     static std::string ShellPage();
 };
 

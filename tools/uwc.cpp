@@ -11,6 +11,7 @@
 // The output path defaults to the input with the binary extension.
 
 #include "../include/UltraWebCSSCompiler.h"
+#include "../include/UltraWebHTMLGenerator.h"
 #include "../include/UltraWebUICompiler.h"
 #include "../server/HermesCompiler.h"
 
@@ -53,26 +54,39 @@ int Usage() {
     std::fprintf(stderr,
         "uwc - UltraWeb Compiler\n"
         "usage: uwc <input.ucml|input.css|input.js> [-o output]\n"
+        "       uwc <input.ucml> --emit-html [--css styles.css] [-o page.html]\n"
+        "           [--title T] [--desc D] [--url canonical]\n"
         "  .ucml -> .ucb (binary UI)\n"
         "  .css  -> .ucs (binary styles)\n"
-        "  .js   -> .hbc (Hermes bytecode; needs hermesc via PATH or ULTRAWEB_HERMESC)\n");
+        "  .js   -> .hbc (Hermes bytecode; needs hermesc via PATH or ULTRAWEB_HERMESC)\n"
+        "  --emit-html: crawler/fallback HTML from the same UCML source\n");
     return 2;
 }
 
 } // namespace
 
 int main(int argc, char** argv) {
-    std::string input, output;
+    std::string input, output, cssPath;
+    bool emitHtml = false;
+    UltraWeb::Server::HTMLPageMeta meta;
+    meta.title = "UltraWeb Application";
+
     for (int i = 1; i < argc; i++) {
-        if (std::strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
-            output = argv[++i];
-        } else if (argv[i][0] == '-') {
-            return Usage();
-        } else if (input.empty()) {
-            input = argv[i];
-        } else {
-            return Usage();
-        }
+        std::string arg = argv[i];
+        auto next = [&](std::string& target) -> bool {
+            if (i + 1 >= argc) return false;
+            target = argv[++i];
+            return true;
+        };
+        if (arg == "-o")               { if (!next(output)) return Usage(); }
+        else if (arg == "--emit-html") { emitHtml = true; }
+        else if (arg == "--css")       { if (!next(cssPath)) return Usage(); }
+        else if (arg == "--title")     { if (!next(meta.title)) return Usage(); }
+        else if (arg == "--desc")      { if (!next(meta.description)) return Usage(); }
+        else if (arg == "--url")       { if (!next(meta.canonicalUrl)) return Usage(); }
+        else if (arg[0] == '-')        { return Usage(); }
+        else if (input.empty())        { input = arg; }
+        else return Usage();
     }
     if (input.empty()) return Usage();
 
@@ -84,6 +98,33 @@ int main(int argc, char** argv) {
 
     std::string ext = Extension(input);
     std::vector<uint8_t> binary;
+
+    if (emitHtml) {
+        if (ext != ".ucml") {
+            std::fprintf(stderr, "uwc: --emit-html takes a .ucml input\n");
+            return 1;
+        }
+        std::string css;
+        if (!cssPath.empty() && !ReadFile(cssPath, css)) {
+            std::fprintf(stderr, "uwc: cannot read %s\n", cssPath.c_str());
+            return 1;
+        }
+        UltraWeb::Server::HTMLGenerator generator;
+        auto page = generator.GenerateFromSources(source, css, meta);
+        if (!page.success) {
+            std::fprintf(stderr, "uwc: %s\n", page.error.c_str());
+            return 1;
+        }
+        if (output.empty()) output = ReplaceExtension(input, ".html");
+        if (!WriteFile(output, std::vector<uint8_t>(page.html.begin(),
+                                                    page.html.end()))) {
+            std::fprintf(stderr, "uwc: cannot write %s\n", output.c_str());
+            return 1;
+        }
+        std::printf("uwc: %s -> %s (%zu bytes, crawler/fallback HTML)\n",
+                    input.c_str(), output.c_str(), page.html.size());
+        return 0;
+    }
 
     if (ext == ".ucml") {
         UICompiler compiler;

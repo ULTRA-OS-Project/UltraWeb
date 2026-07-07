@@ -7,6 +7,7 @@
 #include "DevServer.h"
 
 #include "../include/UltraWebBundler.h"
+#include "../include/UltraWebHTMLGenerator.h"
 #include "../runtime/JSONUtil.h"
 #include "DeltaGenerator.h"
 #include "HermesCompiler.h"
@@ -38,6 +39,21 @@ std::string DevServer::ShellPage() {
            "<p>UltraWeb development server. Package: "
            "<a href=\"/app.ucpkg\">/app.ucpkg</a>; connect a WebSocket to "
            "this origin for UCDELTA hot updates.</p>";
+}
+
+std::string DevServer::BuildIndexPage(const std::vector<uint8_t>& package) {
+    // Mode-A HTML-first response (spec: Crawler & Fallback Rendering):
+    // crawlers and no-JS clients get the semantic HTML; browsers load the
+    // runtime and swap in the live app
+    fs::path dir(config.sourceDir);
+    std::string css;
+    ReadTextFile(dir / config.cssFile, css);
+
+    HTMLGenerator generator;
+    HTMLPageMeta meta;
+    meta.title = "UltraWeb Application (dev)";
+    auto page = generator.GenerateFromPackage(package, meta, css);
+    return page.success ? page.html : ShellPage();
 }
 
 std::vector<uint8_t> DevServer::BuildPackage(std::string& error) {
@@ -108,7 +124,7 @@ bool DevServer::Start(const DevServerConfig& cfg, std::string& error) {
     serverConfig.port = config.port;
     if (!server.Start(serverConfig, error)) return false;
 
-    server.ServeStatic("/", "text/html", ShellPage());
+    server.ServeStatic("/", "text/html", BuildIndexPage(package));
     server.ServePackage("/app.ucpkg", std::move(package));
 
     watcher.AddPath(config.sourceDir);
@@ -137,6 +153,10 @@ bool DevServer::RebuildAndPush(std::string& error) {
         currentPackage = newPackage;
     }
     server.UpdateRoute("/app.ucpkg", newPackage);
+    {
+        std::string page = BuildIndexPage(newPackage);
+        server.UpdateRoute("/", std::vector<uint8_t>(page.begin(), page.end()));
+    }
 
     DeltaGenerator generator;
     DeltaResult delta = generator.Generate(oldPackage, newPackage);
