@@ -2,7 +2,7 @@
 
 ## Document Information
 - **Project Name:** UltraWeb
-- **Version:** 1.1.0
+- **Version:** 1.2.0
 - **Created:** 2025-06-02
 - **Author:** UltraCanvas Framework Team
 - **Status:** Planning / Initial Development
@@ -369,7 +369,18 @@ UltraWeb is a revolutionary web application platform that replaces traditional b
 │ ASSET SECTION (.uca data)                          │
 └────────────────────────────────────────────────────┘
 
-Entire package is LZ4 compressed after header.
+Compression (UCPKGFlags::Compressed, bit 0x0001): the payload after the
+48-byte header is a single LZ4 frame (standard frame format, magic
+04 22 4D 18) containing the concatenated sections. Header offsets, sizes
+and CRC32 always describe the UNCOMPRESSED layout; readers decompress the
+payload first, then apply offsets. The bundler clears the flag and stores
+the payload raw when compression is unavailable or does not reduce size.
+Server-side compression is provided by the VirtualFS module
+(VirtualFS_CompressBuffer); the WASM runtime embeds a minimal LZ4 frame
+decoder. Implemented in core/UltraWebCompression.cpp (backend wrapper),
+core/UltraWebBundler.cpp (compress) and PackageReader (decompress);
+enable with -DULTRAWEB_USE_VIRTUALFS=ON
+-DULTRAWEB_VIRTUALFS_DIR=<UltraCanvas>/VirtualFS.
 ```
 
 ---
@@ -918,8 +929,7 @@ UltraWeb/
 │   │   ├── UICompiler.cpp
 │   │   ├── AssetCompiler.cpp
 │   │   └── HTMLGenerator.cpp
-│   └── compression/
-│       └── LZ4Wrapper.cpp
+│   └── UltraWebCompression.cpp   # LZ4 backend wrapper (VirtualFS server-side)
 │
 ├── runtime/                      # Client runtime (WASM)
 │   ├── UltraWebRuntime.cpp
@@ -1100,7 +1110,7 @@ To stay clear of cloaking penalties, generated pages MUST:
 | Dependency | Purpose | License |
 |------------|---------|---------|
 | Hermes | JavaScript to bytecode compiler | MIT |
-| LZ4 | Fast compression | BSD |
+| LZ4 (via VirtualFS, UltraCanvas module) | Fast compression | BSD |
 | uWebSockets | HTTP/WebSocket server | Apache 2.0 |
 | libwebp | WebP image encoding | BSD |
 | woff2 | Font compression | MIT |
@@ -1169,6 +1179,7 @@ To stay clear of cloaking penalties, generated pages MUST:
 |---------|------|---------|
 | 1.0.0 | 2025-06-02 | Initial document creation |
 | 1.1.0 | 2026-07-07 | Added *Crawler & Fallback Rendering* section (static HTML for crawlers, serving modes, content parity rules); resolved SEO open question; annotated accessibility open question |
+| 1.2.0 | 2026-07-07 | Implemented .ucpkg LZ4 compression via VirtualFS raw-buffer API; specified compressed payload semantics (LZ4 frame after header, uncompressed offsets/CRC); restructured sources into spec directory layout |
 
 ---
 

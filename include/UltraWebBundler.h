@@ -205,8 +205,10 @@ private:
     // Build final package
     std::vector<uint8_t> BuildPackage(BundleResult& result);
     
-    // Calculate flags
-    uint16_t CalculateFlags() const;
+    // Calculate flags; `compressed` reflects the actual compression outcome,
+    // not just the config request (compression may be skipped when the
+    // backend is missing or the content is incompressible)
+    uint16_t CalculateFlags(bool compressed) const;
 };
 
 // ============================================================================

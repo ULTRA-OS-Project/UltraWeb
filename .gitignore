@@ -1,0 +1,18 @@
+# Build outputs
+build/
+cmake-build-*/
+*.o
+*.a
+*.so
+
+# Test executables (never commit compiled binaries)
+BundlerTests
+CSSCompilerTests
+ElementFactoryTests
+EventSystemTests
+RuntimeTests
+UICompilerTests
+
+# IDE
+.idea/
+.vscode/

@@ -32,7 +32,11 @@ constexpr uint16_t UCPKG_VERSION = 0x0100;  // Version 1.0
 // UCPKG Flags
 enum class UCPKGFlags : uint16_t {
     None            = 0x0000,
-    Compressed      = 0x0001,   // LZ4 compression enabled
+    Compressed      = 0x0001,   // Payload after the header is one LZ4 frame
+                                // (standard frame format, magic 04 22 4D 18)
+                                // of the concatenated sections. Header
+                                // offsets/sizes/CRC32 always describe the
+                                // uncompressed layout.
     Encrypted       = 0x0002,   // Encryption enabled
     HasUI           = 0x0010,   // Contains UI section
     HasStyles       = 0x0020,   // Contains style section

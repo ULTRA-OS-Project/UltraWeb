@@ -24,15 +24,22 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 # UltraWeb Core Library
 # ============================================================================
 
+option(ULTRAWEB_USE_VIRTUALFS "Use VirtualFS (UltraCanvas module) for .ucpkg LZ4 compression" OFF)
+set(ULTRAWEB_VIRTUALFS_DIR "" CACHE PATH "Path to the VirtualFS module (e.g. <UltraCanvas>/VirtualFS)")
+
 set(ULTRAWEB_SOURCES
     core/UltraWebCSSParser.cpp
     core/UltraWebCSSCompiler.cpp
     core/UltraWebUIParser.cpp
     core/UltraWebUICompiler.cpp
     core/UltraWebBundler.cpp
+    core/UltraWebCompression.cpp
     runtime/UCBLoader.cpp
     runtime/UCSLoader.cpp
     runtime/UltraWebRuntime.cpp
+    runtime/ElementFactory.cpp
+    runtime/EventSystem.cpp
+    runtime/UCComponents.cpp
 )
 
 set(ULTRAWEB_HEADERS
@@ -42,13 +49,32 @@ set(ULTRAWEB_HEADERS
     include/UltraWebUIParser.h
     include/UltraWebUICompiler.h
     include/UltraWebBundler.h
+    include/UltraWebCompression.h
     runtime/UCBLoader.h
     runtime/UCSLoader.h
     runtime/UltraWebRuntime.h
+    runtime/ElementFactory.h
+    runtime/EventSystem.h
+    runtime/UCComponents.h
 )
 
 add_library(UltraWeb STATIC ${ULTRAWEB_SOURCES} ${ULTRAWEB_HEADERS})
 target_include_directories(UltraWeb PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+# ============================================================================
+# Compression Backend (VirtualFS)
+# ============================================================================
+
+if(ULTRAWEB_USE_VIRTUALFS)
+    if(NOT ULTRAWEB_VIRTUALFS_DIR)
+        message(FATAL_ERROR "ULTRAWEB_USE_VIRTUALFS requires -DULTRAWEB_VIRTUALFS_DIR=<path to UltraCanvas/VirtualFS>")
+    endif()
+    # .ucpkg payloads use LZ4; make sure VirtualFS builds its LZ4 codec
+    set(VIRTUALFS_USE_LZ4 ON CACHE BOOL "LZ4 required for .ucpkg compression" FORCE)
+    add_subdirectory(${ULTRAWEB_VIRTUALFS_DIR} ${CMAKE_CURRENT_BINARY_DIR}/VirtualFS)
+    target_compile_definitions(UltraWeb PUBLIC ULTRAWEB_USE_VIRTUALFS)
+    target_link_libraries(UltraWeb PUBLIC VirtualFS::VirtualFS)
+endif()
 
 # ============================================================================
 # Test Executables
@@ -66,12 +92,20 @@ target_link_libraries(BundlerTests PRIVATE UltraWeb)
 add_executable(RuntimeTests tests/RuntimeTests.cpp)
 target_link_libraries(RuntimeTests PRIVATE UltraWeb)
 
+add_executable(ElementFactoryTests tests/ElementFactoryTests.cpp)
+target_link_libraries(ElementFactoryTests PRIVATE UltraWeb)
+
+add_executable(EventSystemTests tests/EventSystemTests.cpp)
+target_link_libraries(EventSystemTests PRIVATE UltraWeb)
+
 # Enable testing
 enable_testing()
 add_test(NAME CSSCompilerTests COMMAND CSSCompilerTests)
 add_test(NAME UICompilerTests COMMAND UICompilerTests)
 add_test(NAME BundlerTests COMMAND BundlerTests)
 add_test(NAME RuntimeTests COMMAND RuntimeTests)
+add_test(NAME ElementFactoryTests COMMAND ElementFactoryTests)
+add_test(NAME EventSystemTests COMMAND EventSystemTests)
 
 # ============================================================================
 # Install Rules

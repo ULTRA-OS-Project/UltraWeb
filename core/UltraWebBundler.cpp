@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "../include/UltraWebBundler.h"
+#include "../include/UltraWebCompression.h"
 #include <algorithm>
 #include <cstring>
 #include <sstream>
@@ -396,12 +397,30 @@ std::vector<uint8_t> PackageBundler::BuildPackage(BundleResult& result) {
     content.insert(content.end(), assetSection.begin(), assetSection.end());
     
     uint32_t crc = CRC32::Calculate(content);
-    
+
+    // Compress the payload. Header fields (offsets, sizes, CRC) always
+    // describe the uncompressed layout; when the Compressed flag is set the
+    // bytes after the header are a single LZ4 frame of `content`.
+    bool compressed = false;
+    std::vector<uint8_t> compressedContent;
+    if (config.enableCompression && !content.empty()) {
+        if (!Compression::IsAvailable()) {
+            result.AddWarning("Compression requested but no backend available "
+                              "(build with ULTRAWEB_USE_VIRTUALFS); writing uncompressed");
+        } else if (!Compression::CompressLZ4(content, compressedContent)) {
+            result.AddWarning("LZ4 compression failed; writing uncompressed");
+        } else if (compressedContent.size() >= content.size()) {
+            result.AddWarning("Content is incompressible; writing uncompressed");
+        } else {
+            compressed = true;
+        }
+    }
+
     // Write header
     UCPKGHeader header;
     header.magic = UCPKG_MAGIC;
     header.version = UCPKG_VERSION;
-    header.flags = CalculateFlags();
+    header.flags = CalculateFlags(compressed);
     header.totalSize = static_cast<uint32_t>(totalSize);
     header.crc32 = crc;
     header.uiSectionOffset = result.hasUI ? static_cast<uint32_t>(uiOffset) : 0;
@@ -427,27 +446,23 @@ std::vector<uint8_t> PackageBundler::BuildPackage(BundleResult& result) {
     writer.WriteUInt32(header.assetSectionOffset);
     writer.WriteUInt32(header.assetSectionSize);
     
-    // Write sections
-    if (!uiSection.empty()) {
-        writer.WriteBytes(uiSection.data(), uiSection.size());
+    // Write payload: LZ4 frame when compressed, raw sections otherwise
+    if (compressed) {
+        writer.WriteBytes(compressedContent.data(), compressedContent.size());
+        result.totalSize = headerSize + compressedContent.size();
+        result.compressionRatio =
+            static_cast<float>(result.totalSize) / static_cast<float>(totalSize);
+    } else if (!content.empty()) {
+        writer.WriteBytes(content.data(), content.size());
     }
-    if (!styleSection.empty()) {
-        writer.WriteBytes(styleSection.data(), styleSection.size());
-    }
-    if (!codeSection.empty()) {
-        writer.WriteBytes(codeSection.data(), codeSection.size());
-    }
-    if (!assetSection.empty()) {
-        writer.WriteBytes(assetSection.data(), assetSection.size());
-    }
-    
+
     return writer.TakeData();
 }
 
-uint16_t PackageBundler::CalculateFlags() const {
+uint16_t PackageBundler::CalculateFlags(bool compressed) const {
     uint16_t flags = 0;
-    
-    if (config.enableCompression) {
+
+    if (compressed) {
         flags |= static_cast<uint16_t>(UCPKGFlags::Compressed);
     }
     if (config.enableEncryption) {
@@ -512,7 +527,35 @@ bool PackageReader::ParseHeader() {
         isOpen = false;
         return false;
     }
-    
+
+    // Compressed package: payload after the header is a single LZ4 frame of
+    // the concatenated sections. Rebuild `data` as header + decompressed
+    // payload so offsets, sizes and CRC (which always describe the
+    // uncompressed layout) work unchanged.
+    if (HasFlag(static_cast<UCPKGFlags>(header.flags), UCPKGFlags::Compressed)) {
+        size_t headerSize = sizeof(UCPKGHeader);
+        if (data.size() <= headerSize || header.totalSize <= headerSize) {
+            isOpen = false;
+            return false;
+        }
+
+        std::vector<uint8_t> payload;
+        if (!Compression::DecompressLZ4(data.data() + headerSize,
+                                        data.size() - headerSize,
+                                        payload,
+                                        header.totalSize - headerSize)) {
+            isOpen = false;
+            return false;
+        }
+        if (payload.size() != header.totalSize - headerSize) {
+            isOpen = false;
+            return false;
+        }
+
+        data.resize(headerSize);
+        data.insert(data.end(), payload.begin(), payload.end());
+    }
+
     isOpen = true;
     return true;
 }
