@@ -2,7 +2,7 @@
 
 ## Document Information
 - **Project Name:** UltraWeb
-- **Version:** 1.2.0
+- **Version:** 1.3.0
 - **Created:** 2025-06-02
 - **Author:** UltraCanvas Framework Team
 - **Status:** Planning / Initial Development
@@ -819,6 +819,23 @@ UltraWeb/
 
 **Goal:** JavaScript execution via Hermes bytecode.
 
+**Status (v1.3.0):** Core layer implemented. The runtime programs against a
+`JSEngine` abstraction (`runtime/JSEngine.h`) with two backends: **Hermes**
+(`HermesRuntime.*`, JSI-based, executes .hbc, build with
+`ULTRAWEB_USE_HERMES` + the Hermes SDK) and **QuickJS**
+(`QuickJSEngine.*`, source-only, `ULTRAWEB_USE_QUICKJS`) as the
+development/CI engine — the engine fallback anticipated in Risks. All
+JS↔native traffic crosses one host function
+(`__uc_native(name, argsJson)` → JSON), so backends stay tiny and
+behave identically. Implemented: UC element API (query, text/value,
+classes, visibility, bounds), event dispatch to JS (`element.on` /
+`FireDomEvent`), reactive state (`UC.useState` / `computed` / `effect`
+backed by the native `StateManager`), `console.log`, code-section
+execution (HBC via Hermes; plain-JS dev mode on any backend), and the
+server-side `HermesCompiler` (hermesc wrapper producing .hbc).
+`UC.fetch`/`UC.websocket` land with Phase 4, `UC.router`/`UC.storage`
+with Phase 5 (stubs throw descriptive errors).
+
 | Week | Deliverables |
 |------|--------------|
 | 9 | Hermes library integration |
@@ -1121,6 +1138,7 @@ To stay clear of cloaking penalties, generated pages MUST:
 |------------|---------|---------|
 | UltraCanvas | UI rendering | UltraCanvas License |
 | Hermes (embedded) | JS bytecode execution | MIT |
+| QuickJS (optional, dev/CI only) | JS source execution where the Hermes SDK is unavailable | MIT |
 | LZ4 (embedded) | Decompression | BSD |
 
 ---
@@ -1180,6 +1198,7 @@ To stay clear of cloaking penalties, generated pages MUST:
 | 1.0.0 | 2025-06-02 | Initial document creation |
 | 1.1.0 | 2026-07-07 | Added *Crawler & Fallback Rendering* section (static HTML for crawlers, serving modes, content parity rules); resolved SEO open question; annotated accessibility open question |
 | 1.2.0 | 2026-07-07 | Implemented .ucpkg LZ4 compression via VirtualFS raw-buffer API; specified compressed payload semantics (LZ4 frame after header, uncompressed offsets/CRC); restructured sources into spec directory layout |
+| 1.3.0 | 2026-07-07 | Phase 3 core: JSEngine abstraction with Hermes (JSI/.hbc) and QuickJS (dev/CI) backends, UC JavaScript API (elements, classes, events, reactive state), StateManager, event dispatch to JS, code-section execution, server-side HermesCompiler (hermesc wrapper) |
 
 ---
 

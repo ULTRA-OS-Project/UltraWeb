@@ -9,6 +9,8 @@
 #include "../include/UltraWebBundler.h"
 #include "UCBLoader.h"
 #include "UCSLoader.h"
+#include "JSEngine.h"
+#include "UCApi.h"
 #include <string>
 #include <vector>
 #include <memory>
@@ -242,6 +244,25 @@ public:
     
     // Code section access (for Hermes integration)
     const std::vector<uint8_t>& GetCodeSection() const { return codeSection; }
+
+    // ===== JAVASCRIPT (Phase 3) =====
+    // Attaches a JS engine (HermesEngine in production, QuickJSEngine for
+    // development): registers the __uc_native dispatcher and evaluates the
+    // UC prelude. Returns false with `error` set if the prelude fails.
+    bool AttachJSEngine(std::shared_ptr<JSEngine> engine, std::string& error);
+
+    // Executes the loaded code section: Hermes bytecode when the buffer
+    // carries the HBC magic (requires a bytecode-capable engine), otherwise
+    // treated as UTF-8 JavaScript source (development mode).
+    bool ExecuteCodeSection(std::string& error);
+
+    JSEngine* GetJSEngine() const { return jsEngine.get(); }
+    UCApi* GetJSApi() const { return jsApi.get(); }
+
+    // Forwards a UI event to JS handlers registered via element.on(...).
+    // eventJSON is the event payload; returns true if a JS handler ran.
+    bool FireDomEvent(uint16_t elementId, const std::string& eventType,
+                      const std::string& eventJSON = "{}");
     
     // Asset access
     const std::vector<uint8_t>& GetAssetSection() const { return assetSection; }
@@ -267,6 +288,10 @@ private:
     // Raw sections
     std::vector<uint8_t> codeSection;
     std::vector<uint8_t> assetSection;
+
+    // JavaScript (Phase 3)
+    std::shared_ptr<JSEngine> jsEngine;
+    std::unique_ptr<UCApi> jsApi;
     
     // Callbacks
     EventCallback eventCallback;

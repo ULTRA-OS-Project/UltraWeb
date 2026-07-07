@@ -27,6 +27,11 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 option(ULTRAWEB_USE_VIRTUALFS "Use VirtualFS (UltraCanvas module) for .ucpkg LZ4 compression" OFF)
 set(ULTRAWEB_VIRTUALFS_DIR "" CACHE PATH "Path to the VirtualFS module (e.g. <UltraCanvas>/VirtualFS)")
 
+option(ULTRAWEB_USE_HERMES "Build the Hermes JS engine backend (requires the Hermes SDK)" OFF)
+set(ULTRAWEB_HERMES_SDK_DIR "" CACHE PATH "Hermes SDK install prefix (contains include/ and lib/)")
+
+option(ULTRAWEB_USE_QUICKJS "Build the QuickJS JS engine backend (development/CI engine)" OFF)
+
 set(ULTRAWEB_SOURCES
     core/UltraWebCSSParser.cpp
     core/UltraWebCSSCompiler.cpp
@@ -40,6 +45,12 @@ set(ULTRAWEB_SOURCES
     runtime/ElementFactory.cpp
     runtime/EventSystem.cpp
     runtime/UCComponents.cpp
+    runtime/JSONUtil.cpp
+    runtime/StateManager.cpp
+    runtime/UCApi.cpp
+    runtime/QuickJSEngine.cpp
+    runtime/HermesRuntime.cpp
+    server/HermesCompiler.cpp
 )
 
 set(ULTRAWEB_HEADERS
@@ -56,10 +67,53 @@ set(ULTRAWEB_HEADERS
     runtime/ElementFactory.h
     runtime/EventSystem.h
     runtime/UCComponents.h
+    runtime/JSEngine.h
+    runtime/JSONUtil.h
+    runtime/StateManager.h
+    runtime/UCApi.h
+    runtime/QuickJSEngine.h
+    runtime/HermesRuntime.h
+    server/HermesCompiler.h
 )
 
 add_library(UltraWeb STATIC ${ULTRAWEB_SOURCES} ${ULTRAWEB_HEADERS})
 target_include_directories(UltraWeb PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+# ============================================================================
+# JavaScript Engine Backends
+# ============================================================================
+# The engine sources are always in the target; their bodies compile only
+# when the matching ULTRAWEB_USE_* define is set.
+
+if(ULTRAWEB_USE_QUICKJS)
+    find_path(QUICKJS_INCLUDE_DIR quickjs/quickjs.h)
+    find_library(QUICKJS_LIBRARY NAMES quickjs PATHS /usr/lib/quickjs /usr/local/lib/quickjs)
+    if(NOT QUICKJS_INCLUDE_DIR OR NOT QUICKJS_LIBRARY)
+        message(FATAL_ERROR "ULTRAWEB_USE_QUICKJS: quickjs/quickjs.h or libquickjs not found (install libquickjs / quickjs-devel)")
+    endif()
+    message(STATUS "QuickJS backend: ${QUICKJS_LIBRARY}")
+    target_include_directories(UltraWeb PRIVATE ${QUICKJS_INCLUDE_DIR})
+    target_compile_definitions(UltraWeb PUBLIC ULTRAWEB_USE_QUICKJS)
+    target_link_libraries(UltraWeb PUBLIC ${QUICKJS_LIBRARY})
+    # QuickJS static lib needs libm/pthread/dl on Linux
+    if(UNIX AND NOT APPLE)
+        target_link_libraries(UltraWeb PUBLIC m pthread ${CMAKE_DL_LIBS})
+    endif()
+endif()
+
+if(ULTRAWEB_USE_HERMES)
+    if(NOT ULTRAWEB_HERMES_SDK_DIR)
+        message(FATAL_ERROR "ULTRAWEB_USE_HERMES requires -DULTRAWEB_HERMES_SDK_DIR=<Hermes SDK prefix>")
+    endif()
+    find_library(HERMES_LIBRARY NAMES hermes libhermes PATHS ${ULTRAWEB_HERMES_SDK_DIR}/lib)
+    if(NOT HERMES_LIBRARY)
+        message(FATAL_ERROR "ULTRAWEB_USE_HERMES: libhermes not found under ${ULTRAWEB_HERMES_SDK_DIR}/lib")
+    endif()
+    message(STATUS "Hermes backend: ${HERMES_LIBRARY}")
+    target_include_directories(UltraWeb PRIVATE ${ULTRAWEB_HERMES_SDK_DIR}/include)
+    target_compile_definitions(UltraWeb PUBLIC ULTRAWEB_USE_HERMES)
+    target_link_libraries(UltraWeb PUBLIC ${HERMES_LIBRARY})
+endif()
 
 # ============================================================================
 # Compression Backend (VirtualFS)
@@ -98,6 +152,9 @@ target_link_libraries(ElementFactoryTests PRIVATE UltraWeb)
 add_executable(EventSystemTests tests/EventSystemTests.cpp)
 target_link_libraries(EventSystemTests PRIVATE UltraWeb)
 
+add_executable(JSRuntimeTests tests/JSRuntimeTests.cpp)
+target_link_libraries(JSRuntimeTests PRIVATE UltraWeb)
+
 # Enable testing
 enable_testing()
 add_test(NAME CSSCompilerTests COMMAND CSSCompilerTests)
@@ -106,6 +163,7 @@ add_test(NAME BundlerTests COMMAND BundlerTests)
 add_test(NAME RuntimeTests COMMAND RuntimeTests)
 add_test(NAME ElementFactoryTests COMMAND ElementFactoryTests)
 add_test(NAME EventSystemTests COMMAND EventSystemTests)
+add_test(NAME JSRuntimeTests COMMAND JSRuntimeTests)
 
 # ============================================================================
 # Install Rules

@@ -597,6 +597,68 @@ bool UltraWebRuntime::LoadAssets(const std::vector<uint8_t>& ucaData) {
     return true;
 }
 
+// ============================================================================
+// JAVASCRIPT (Phase 3)
+// ============================================================================
+
+bool UltraWebRuntime::AttachJSEngine(std::shared_ptr<JSEngine> engine,
+                                     std::string& error) {
+    if (!engine) {
+        error = "AttachJSEngine: null engine";
+        return false;
+    }
+    jsEngine = std::move(engine);
+    jsApi.reset(new UCApi(*this, *jsEngine));
+
+    jsEngine->SetNativeDispatcher(
+        [this](const std::string& fn, const std::string& argsJson) {
+            return jsApi ? jsApi->Dispatch(fn, argsJson) : std::string("null");
+        });
+
+    return jsEngine->EvaluateSource(UCApi::GetPreludeSource(),
+                                    "<uc-prelude>", error);
+}
+
+bool UltraWebRuntime::ExecuteCodeSection(std::string& error) {
+    if (!jsEngine) {
+        error = "no JS engine attached (call AttachJSEngine first)";
+        return false;
+    }
+    if (codeSection.empty()) {
+        error = "no code section loaded";
+        return false;
+    }
+
+    // Hermes bytecode magic (same constant as server/HermesCompiler.h;
+    // duplicated because the runtime must not depend on server code)
+    static const uint8_t kHbcMagic[8] = {0xC6, 0x1F, 0xBC, 0x03,
+                                         0xC1, 0x03, 0x19, 0x1F};
+    bool isBytecode = codeSection.size() >= sizeof(kHbcMagic) &&
+                      std::memcmp(codeSection.data(), kHbcMagic,
+                                  sizeof(kHbcMagic)) == 0;
+
+    if (isBytecode) {
+        if (!jsEngine->SupportsBytecode()) {
+            error = "code section is Hermes bytecode but the attached " +
+                    jsEngine->GetName() +
+                    " engine executes source only (build with "
+                    "ULTRAWEB_USE_HERMES for bytecode execution)";
+            return false;
+        }
+        return jsEngine->EvaluateBytecode(codeSection, error);
+    }
+
+    // Development mode: plain UTF-8 JavaScript source in the code section
+    std::string source(codeSection.begin(), codeSection.end());
+    return jsEngine->EvaluateSource(source, "<code-section>", error);
+}
+
+bool UltraWebRuntime::FireDomEvent(uint16_t elementId,
+                                   const std::string& eventType,
+                                   const std::string& eventJSON) {
+    return jsApi ? jsApi->FireEvent(elementId, eventType, eventJSON) : false;
+}
+
 void UltraWebRuntime::BuildRuntimeElements() {
     elements.clear();
     
